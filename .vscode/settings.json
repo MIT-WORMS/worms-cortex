@@ -1,0 +1,17 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.cortex-dev/bin/python",
+  "python.analysis.extraPaths": [
+    "/opt/ros/jazzy/lib/python3.12/site-packages/",
+    "${workspaceFolder}/../",
+    "${workspaceFolder}/../../install/lib/python3.12/site-packages"
+  ],
+  "python.analysis.typeCheckingMode": "standard",
+  "editor.defaultFormatter": "charliermarsh.ruff",
+  "editor.formatOnSave": true,
+  "editor.insertSpaces": true,
+  "editor.tabSize": 4,
+  "files.encoding": "utf8",
+  "ruff.enable": true,
+  "ruff.lint.enable": true,
+  "ruff.lineLength": null,
+}
