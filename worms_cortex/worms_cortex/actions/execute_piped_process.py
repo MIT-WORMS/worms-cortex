@@ -1,4 +1,4 @@
-from typing import Dict, List, Iterable
+from typing import Dict
 
 import os
 import asyncio
@@ -6,55 +6,23 @@ import socket
 import traceback
 from contextlib import suppress
 
-from launch.launch_description_entity import LaunchDescriptionEntity
 from osrf_pycommon.process_utils import async_execute_process
 
 from launch import LaunchContext
 from launch.actions import ExecuteProcess, ExecuteLocal
 from launch.events.process import ProcessStarted, ProcessExited
 from launch.conditions import evaluate_condition_expression
-from launch.frontend import expose_action
 from launch.utilities import normalize_to_list_of_substitutions
-from launch.some_substitutions_type import SomeSubstitutionsType
+
+from ..events import PipedOutput
 
 
-@expose_action("piped_executable")
 class ExecutePipedProcess(ExecuteProcess):
     """
     Action that executes a process and sets up a communication pipe with it. The child
-    process can then emit events in the parent process through this pipe.
+    process can then emit events in the parent process through this pipe. These events
+    can be handled by registering an `OnPipedOutput` event handler.
     """
-
-    def __init__(
-        self,
-        *,
-        cmd: Iterable[SomeSubstitutionsType],
-        handler,  # TODO (trevor): Make an abstract base class for this
-        prefix: SomeSubstitutionsType | None = None,
-        name: SomeSubstitutionsType | None = None,
-        cwd: SomeSubstitutionsType | None = None,
-        env: Dict[SomeSubstitutionsType, SomeSubstitutionsType] | None = None,
-        additional_env: Dict[SomeSubstitutionsType, SomeSubstitutionsType]
-        | None = None,
-        **kwargs,
-    ) -> None:
-        """
-        Extends the `ExecuteProcess` action allowing the child process to emit events.
-
-        Args:
-            # TODO (trevor): Indicate typehint here
-            handler: The `EventHandler` to manage events from the child process.
-        """
-        super().__init__(
-            cmd=cmd,
-            prefix=prefix,
-            name=name,
-            cwd=cwd,
-            env=env,
-            additional_env=additional_env,
-            **kwargs,
-        )
-        self.__extra_handler = handler
 
     class __ProcessProtocol(ExecuteProcess.__ProcessProtocol):
         """Subclassed to include an additional communication socket."""
@@ -92,8 +60,9 @@ class ExecutePipedProcess(ExecuteProcess):
 
         def on_additional_socket_received(self, data: bytes) -> None:
             """Custom logic for handling additional data from the process."""
-            # TODO (trevor): Set up a custom event to emit
-            pass
+            self.__context.emit_event_sync(
+                PipedOutput(data=data, **self.__process_event_args)
+            )
 
         async def __cleanup_watch_task(self) -> None:
             """Waits for the watch task to exit cleanly."""
@@ -223,28 +192,3 @@ class ExecutePipedProcess(ExecuteProcess):
         server_sock.close()
         subprocess_sock.close()
         self.__cleanup()
-
-    def execute(self, context: LaunchContext) -> List[LaunchDescriptionEntity] | None:
-        """
-        Executes the action, extending `ExecuteProcess` by handling events
-        emitted from the child.
-        """
-        name = self.__process_description.final_name
-
-        if self.__executed:
-            raise RuntimeError(
-                f"ExecuteLocal action '{name}': executed more than once: {self.describe()}"
-            )
-
-        if context.is_shutdown:
-            # If shutdown starts before execution can start, don't start execution.
-            return None
-
-        # Register additional event handler for the extra communication
-        context.register_event_handler(self.__extra_handler)
-
-        try:
-            return super().execute(context)
-        except Exception:
-            context.unregister_event_handler(self.__extra_handler)
-            raise
