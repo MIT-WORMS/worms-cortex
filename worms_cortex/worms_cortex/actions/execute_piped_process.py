@@ -1,6 +1,7 @@
 from typing import Dict
 
 import os
+import struct
 import asyncio
 import socket
 import traceback
@@ -10,7 +11,8 @@ from osrf_pycommon.process_utils import async_execute_process
 
 from launch import LaunchContext
 from launch.actions import ExecuteProcess, ExecuteLocal
-from launch.events.process import ProcessStarted, ProcessExited
+from launch.events.process import ProcessStarted, ProcessExited, ShutdownProcess
+from launch.events import matches_action
 from launch.conditions import evaluate_condition_expression
 from launch.utilities import normalize_to_list_of_substitutions
 
@@ -37,6 +39,7 @@ class ExecutePipedProcess(ExecuteProcess):
             **kwargs,
         ) -> None:
             super().__init__(action, context, process_event_args, **kwargs)
+            self.__action = action
             self.__reader = reader
             self.__writer = writer
             self.__watch_task = None
@@ -78,11 +81,47 @@ class ExecutePipedProcess(ExecuteProcess):
             Watches the additional process socket and passes data to
             `on_additional_socket_received` if anything is sent.
             """
+            buffer = b""
+            expected_length = None
+
+            # Read data until StreamReader is closed
             while not self.__reader.at_eof():
-                # TODO (trevor): Implications of reading 1024 bytes?
-                data = await self.__reader.read(1024)
-                if data:
-                    self.on_additional_socket_received(data)
+                chunk = await self.__reader.read(1024)
+                if not chunk:
+                    break
+
+                while True:
+                    # Attempt to extract payload length
+                    if expected_length is None:
+                        # Not enough data for package length
+                        if len(buffer) < 4:
+                            break
+
+                        # Unpack package length, error if malformed
+                        try:
+                            expected_length = struct.unpack(">I", buffer[:4])[0]
+                            buffer = buffer[4:]
+                        except struct.error:
+                            self.__logger.error(
+                                "Invalid payload length in piped process.",
+                                exc_info=True,
+                            )
+                            await self.__context.emit_event(
+                                ShutdownProcess(
+                                    process_matcher=matches_action(self.__action)
+                                )
+                            )
+                            return
+
+                    # Not enough data for payload
+                    if len(buffer) < expected_length:
+                        break
+
+                    # Unpack payload
+                    payload = buffer[:expected_length]
+                    buffer = buffer[expected_length:]
+                    expected_length = None
+                    self.on_additional_socket_received(payload)
 
     async def __execute_process(self, context: LaunchContext) -> None:
         process_event_args = self.__process_event_args
