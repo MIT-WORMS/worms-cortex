@@ -57,9 +57,7 @@ class ExecutePipedProcess(ExecuteProcess):
         self.__extra_handler = handler
 
     class __ProcessProtocol(ExecuteProcess.__ProcessProtocol):
-        """
-        Subclassed from original protocol to include an additional communication socket
-        """
+        """Subclassed to include an additional communication socket."""
 
         def __init__(
             self,
@@ -76,16 +74,12 @@ class ExecutePipedProcess(ExecuteProcess):
             self.__watch_task = None
 
         def connection_made(self, transport: asyncio.SubprocessTransport) -> None:
-            """
-            Called when a connection is made.
-            """
+            """Called when a connection is made."""
             super().connection_made(transport)
             self.__watch_task = asyncio.create_task(self.__watch_additional_socket())
 
         def connection_lost(self, exc: Exception | None):
-            """
-            Called when a connection is lost or closed.
-            """
+            """Called when a connection is lost or closed."""
             if self.__watch_task:
                 self.__watch_task.cancel()
                 asyncio.create_task(self.__cleanup_watch_task())
@@ -97,16 +91,12 @@ class ExecutePipedProcess(ExecuteProcess):
             super().connection_lost(exc)
 
         def on_additional_socket_received(self, data: bytes) -> None:
-            """
-            Custom logic for handling additional data from the process.
-            """
+            """Custom logic for handling additional data from the process."""
             # TODO (trevor): Set up a custom event to emit
             pass
 
         async def __cleanup_watch_task(self) -> None:
-            """
-            Waits for the watch task to exit cleanly.
-            """
+            """Waits for the watch task to exit cleanly."""
             if not self.__watch_task:
                 return
 
