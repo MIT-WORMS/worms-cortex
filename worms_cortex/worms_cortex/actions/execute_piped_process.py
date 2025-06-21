@@ -18,6 +18,13 @@ from launch.conditions import evaluate_condition_expression
 from launch.utilities import normalize_to_list_of_substitutions
 
 
+SOCKET_ENVIRON = "_SOCKET_FD"
+"""
+Environment variable name set in the child process. Use 
+`os.environ[SOCKET_ENVIRON]` to retrieve the file descriptor.
+"""
+
+
 class ExecutePipedProcess(ExecuteProcess):
     """
     Action that executes a process and sets up a communication pipe with it. The child
@@ -165,7 +172,7 @@ class ExecutePipedProcess(ExecuteProcess):
             )
 
         # Inject additional socket fd into env
-        fd_dict = {"_SOCKET_FD": str(subprocess_sock.fileno())}
+        fd_dict = {SOCKET_ENVIRON: str(subprocess_sock.fileno())}
         env = env | fd_dict if env else fd_dict
 
         # Emulate tty resolution
