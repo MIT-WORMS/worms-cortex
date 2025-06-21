@@ -22,7 +22,7 @@ class ExecutePipedProcess(ExecuteProcess):
     """
     Action that executes a process and sets up a communication pipe with it. The child
     process can then emit events in the parent process through this pipe. These events
-    can be handled by registering an `OnPipedOutput` event handler.
+    can be handled by registering appropriate event handlers.
     """
 
     class __ProcessProtocol(ExecuteProcess.__ProcessProtocol):
