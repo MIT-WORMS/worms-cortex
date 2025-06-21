@@ -2,6 +2,7 @@ from typing import Dict
 
 import os
 import struct
+import pickle
 import asyncio
 import socket
 import traceback
@@ -9,14 +10,12 @@ from contextlib import suppress
 
 from osrf_pycommon.process_utils import async_execute_process
 
-from launch import LaunchContext
+from launch import LaunchContext, Event
 from launch.actions import ExecuteProcess, ExecuteLocal
 from launch.events.process import ProcessStarted, ProcessExited, ShutdownProcess
 from launch.events import matches_action
 from launch.conditions import evaluate_condition_expression
 from launch.utilities import normalize_to_list_of_substitutions
-
-from ..events import PipedOutput
 
 
 class ExecutePipedProcess(ExecuteProcess):
@@ -63,9 +62,27 @@ class ExecutePipedProcess(ExecuteProcess):
 
         def on_additional_socket_received(self, data: bytes) -> None:
             """Custom logic for handling additional data from the process."""
-            self.__context.emit_event_sync(
-                PipedOutput(data=data, **self.__process_event_args)
-            )
+            try:
+                # Try to deserialize the event object from the child
+                event = pickle.loads(data)
+                if not isinstance(event, Event):
+                    self.__logger.error(
+                        f"Received non-Event payload '{type(event).__name__}' "
+                        f"from child process {self.__process_event_args['name']}; "
+                        f"PID={self.__process_event_args['pid']}",
+                    )
+                    return
+
+                # Emit the event if no issues occurred
+                self.__context.emit_event_sync(event)
+
+            except Exception:
+                self.__logger.error(
+                    "Failed to deserialize event from child process "
+                    f"{self.__process_event_args['name']}; "
+                    f"PID={self.__process_event_args['pid']}",
+                    exc_info=True,
+                )
 
         async def __cleanup_watch_task(self) -> None:
             """Waits for the watch task to exit cleanly."""

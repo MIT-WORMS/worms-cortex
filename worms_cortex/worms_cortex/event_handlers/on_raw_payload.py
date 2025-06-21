@@ -5,11 +5,11 @@ from launch.event_handlers.on_action_event_base import OnActionEventBase
 from launch.some_entities_type import SomeEntitiesType
 
 from ..actions import ExecutePipedProcess
-from ..events import PipedOutput
+from ..events import RawPayload
 
 
-class OnPipedOutput(OnActionEventBase):
-    """Helper class for handling output from a piped process via events."""
+class OnRawPayload(OnActionEventBase):
+    """Helper class for handling raw output from a piped process via events."""
 
     def __init__(
         self,
@@ -20,7 +20,7 @@ class OnPipedOutput(OnActionEventBase):
         **kwargs,
     ) -> None:
         """
-        Create an `OnPipedOutput` event handler.
+        Create an `OnRawPayload` event handler.
 
         Args:
             target_action: `ExecutePipedProcess` instance or callable to filter events
@@ -32,7 +32,7 @@ class OnPipedOutput(OnActionEventBase):
         super().__init__(
             action_matcher=target_action,
             on_event=on_output,
-            target_event_cls=PipedOutput,
+            target_event_cls=RawPayload,
             target_action_cls=ExecutePipedProcess,
             **kwargs,
         )

@@ -1,20 +1,31 @@
+import pickle
 import struct
 
 from launch.event import Event
 
 
 class PipedInput(Event):
-    """Emitted event from a piped child process to generate additional output."""
+    """Emitted client-side event for a child process to propagate arbitrary events."""
 
     name = "worms_cortex.events.PipedInput"
 
-    def __init__(self, *, data: bytes) -> None:
+    def __init__(self, *, event: Event) -> None:
         """
-        Create a `PipedInput` event.
+        Create a `PipedInput` event to be sent from the child process.
 
         Args:
-            data: Raw bytes to be sent from the process
+            event: An event instance to propagate to the parent
         """
+        if not isinstance(event, Event):
+            raise TypeError(f"Invalid event type {type(event).__name__} in PipedInput.")
+
+        # Try to serialize the event
+        try:
+            data = pickle.dumps(event)
+        except Exception as e:
+            raise ValueError(f"Failed to serialize event: {e}") from e
+
+        self.__event = event
         self.__data = data
 
     def __bytes__(self) -> bytes:
@@ -31,3 +42,7 @@ class PipedInput(Event):
     @property
     def message(self) -> bytes:
         return self.header + self.payload
+
+    @property
+    def event(self) -> Event:
+        return self.__event
