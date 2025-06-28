@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Any
 
 import os
 import struct
@@ -7,6 +7,7 @@ import asyncio
 import socket
 import traceback
 from contextlib import suppress
+from logging import Logger
 
 from osrf_pycommon.process_utils import async_execute_process
 
@@ -32,8 +33,13 @@ class ExecutePipedProcess(ExecuteProcess):
     can be handled by registering appropriate event handlers.
     """
 
-    class __ProcessProtocol(ExecuteProcess.__ProcessProtocol):
+    __MANGLE_PREFIX = "_ExecuteLocal"
+    __BaseProtocol = getattr(ExecuteLocal, f"{__MANGLE_PREFIX}__ProcessProtocol")
+
+    class __ProcessProtocol(__BaseProtocol):
         """Subclassed to include an additional communication socket."""
+
+        __MANGLE_PREFIX = "_ProcessProtocol"
 
         def __init__(
             self,
@@ -147,7 +153,23 @@ class ExecutePipedProcess(ExecuteProcess):
                     expected_length = None
                     self.on_additional_socket_received(payload)
 
-    async def __execute_process(self, context: LaunchContext) -> None:
+        """
+        Properties to bypass name mangling
+        """
+
+        @property
+        def __logger(self) -> Logger:
+            return getattr(self, f"{self.__MANGLE_PREFIX}__logger")
+
+        @property
+        def __process_event_args(self) -> dict[str, Any]:
+            return getattr(self, f"{self.__MANGLE_PREFIX}__process_event_args")
+
+        @property
+        def __context(self) -> LaunchContext:
+            return getattr(self, f"{self.__MANGLE_PREFIX}__context")
+
+    async def _ExecuteLocal__execute_process(self, context: LaunchContext) -> None:
         process_event_args = self.__process_event_args
         if process_event_args is None:
             raise RuntimeError("process_event_args unexpectedly None")
@@ -250,8 +272,61 @@ class ExecutePipedProcess(ExecuteProcess):
                     (self.__shutdown_future,), timeout=self.__respawn_delay
                 )
             if not self.__shutdown_future.done():
-                context.asyncio_loop.create_task(self.__execute_process(context))  # type: ignore
+                context.asyncio_loop.create_task(  # type: ignore
+                    self._ExecuteLocal__execute_process(context)
+                )
                 return
         server_sock.close()
         subprocess_sock.close()
         self.__cleanup()
+
+    """
+    Properties to bypass name mangling
+    """
+
+    def __cleanup(self) -> None:
+        getattr(self, f"{self.__MANGLE_PREFIX}__cleanup")()
+
+    @property
+    def __process_event_args(self) -> dict[str, Any] | None:
+        return getattr(self, f"{self.__MANGLE_PREFIX}__process_event_args")
+
+    @property
+    def __log_cmd(self) -> bool:
+        return getattr(self, f"{self.__MANGLE_PREFIX}__log_cmd")
+
+    @property
+    def __logger(self) -> Logger:
+        return getattr(self, f"{self.__MANGLE_PREFIX}__logger")
+
+    @property
+    def __emulate_tty(self) -> bool:
+        return getattr(self, f"{self.__MANGLE_PREFIX}__emulate_tty")
+
+    @property
+    def __shell(self) -> bool:
+        return getattr(self, f"{self.__MANGLE_PREFIX}__shell")
+
+    @property
+    def __shutdown_future(self) -> asyncio.Future | None:
+        return getattr(self, f"{self.__MANGLE_PREFIX}__shutdown_future")
+
+    @property
+    def __respawn(self) -> bool:
+        return getattr(self, f"{self.__MANGLE_PREFIX}__respawn")
+
+    @property
+    def __respawn_max_retries(self) -> int:
+        return getattr(self, f"{self.__MANGLE_PREFIX}__respawn_max_retries")
+
+    @property
+    def __respawn_retries(self) -> int:
+        return getattr(self, f"{self.__MANGLE_PREFIX}__respawn_retries")
+
+    @__respawn_retries.setter
+    def __respawn_retries(self, val) -> None:
+        setattr(self, f"{self.__MANGLE_PREFIX}__respawn_retries", val)
+
+    @property
+    def __respawn_delay(self) -> float | None:
+        return getattr(self, f"{self.__MANGLE_PREFIX}__respawn_delay")
