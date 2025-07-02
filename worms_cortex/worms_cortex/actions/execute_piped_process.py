@@ -36,7 +36,7 @@ class ExecutePipedProcess(ExecuteProcess):
     __MANGLE_PREFIX = "_ExecuteLocal"
     __BaseProtocol = getattr(ExecuteLocal, f"{__MANGLE_PREFIX}__ProcessProtocol")
 
-    class __ProcessProtocol(__BaseProtocol):
+    class __PipedProcessProtocol(__BaseProtocol):
         """Subclassed to include an additional communication socket."""
 
         __MANGLE_PREFIX = "_ProcessProtocol"
@@ -211,7 +211,7 @@ class ExecutePipedProcess(ExecuteProcess):
         try:
             reader, writer = await asyncio.open_unix_connection(sock=server_sock)
             transport, self._subprocess_protocol = await async_execute_process(
-                lambda **kwargs: self.__ProcessProtocol(
+                lambda **kwargs: self.__PipedProcessProtocol(
                     self, context, process_event_args, reader, writer, **kwargs
                 ),
                 cmd=cmd,
