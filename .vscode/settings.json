@@ -3,6 +3,7 @@
   "python.analysis.extraPaths": [
     "/opt/ros/jazzy/lib/python3.12/site-packages/",
     "${workspaceFolder}/../",
+    "${workspaceFolder}/../../install/worms_cortex_interface/lib/python3.12/site-packages",
     "${workspaceFolder}/../../install/lib/python3.12/site-packages"
   ],
   "python.analysis.typeCheckingMode": "standard",
