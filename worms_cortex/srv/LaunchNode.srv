@@ -1,0 +1,9 @@
+# Basic service to launch a node through a manager.
+
+# Arguments passed directly to `launch_ros.actions.Node`
+string package
+string executable
+string name
+string[] arguments
+---
+bool success
