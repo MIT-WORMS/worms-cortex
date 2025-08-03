@@ -4,14 +4,14 @@ import struct
 from launch.event import Event
 
 
-class PipedInput(Event):
-    """Emitted client-side event for a child process to propagate arbitrary events."""
+class SerializedEvent:
+    """
+    Helper class to serialize events for emission into a `ExecutePipedProcess` instance
+    """
 
-    name = "worms_cortex.events.PipedInput"
-
-    def __init__(self, *, event: Event) -> None:
+    def __init__(self, event: Event) -> None:
         """
-        Create a `PipedInput` event to be sent from the child process.
+        Create a `SerializedEvent` event to be sent from the child process.
 
         Args:
             event: An event instance to propagate to the parent
@@ -25,19 +25,19 @@ class PipedInput(Event):
         except Exception as e:
             raise ValueError(f"Failed to serialize event: {e}") from e
 
-        self.__event = event
-        self.__data = data
+        self._event = event
+        self._data = data
 
     def __bytes__(self) -> bytes:
         return self.message
 
     @property
     def header(self) -> bytes:
-        return struct.pack(">I", len(self.__data))
+        return struct.pack(">I", len(self._data))
 
     @property
     def payload(self) -> bytes:
-        return self.__data
+        return self._data
 
     @property
     def message(self) -> bytes:
@@ -45,4 +45,8 @@ class PipedInput(Event):
 
     @property
     def event(self) -> Event:
-        return self.__event
+        return self._event
+
+    def encode(self) -> bytes:
+        """Encode this event for emission into the child process socket."""
+        return self.message
