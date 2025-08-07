@@ -19,7 +19,7 @@ class ManagerNodeMixin:
     inheritence along with a `Node`.
     """
 
-    def __init__(self) -> None:
+    def __init__(self):
         """Initialize a `ManagerNode`."""
         if not isinstance(self, Node):
             raise RuntimeError(

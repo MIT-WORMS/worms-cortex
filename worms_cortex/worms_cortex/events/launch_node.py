@@ -11,7 +11,7 @@ class LaunchNode(RawPayload):
 
     name = "worms_cortex.events.LaunchNode"
 
-    def __init__(self, node_action: Node) -> None:
+    def __init__(self, node_action: Node):
         """
         Create a `LaunchNode` event.
 

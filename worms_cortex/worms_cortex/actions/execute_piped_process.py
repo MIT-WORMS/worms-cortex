@@ -2,7 +2,6 @@ from typing import Dict, Any
 
 import os
 import struct
-import pickle
 import asyncio
 import socket
 import traceback
@@ -18,6 +17,7 @@ from launch.events import matches_action
 from launch.conditions import evaluate_condition_expression
 from launch.utilities import normalize_to_list_of_substitutions
 
+from ..events.serialize import EventStream
 
 SOCKET_ENVIRON = "_SOCKET_FD"
 """
@@ -49,10 +49,11 @@ class ExecutePipedProcess(ExecuteProcess):
             reader: asyncio.StreamReader,
             writer: asyncio.StreamWriter,
             **kwargs,
-        ) -> None:
+        ):
             super().__init__(action, context, process_event_args, **kwargs)
             self.__action = action
             self.__reader = reader
+            self.__event_stream = EventStream()
             self.__writer = writer
             self.__watch_task = None
 
@@ -73,29 +74,11 @@ class ExecutePipedProcess(ExecuteProcess):
 
             super().connection_lost(exc)
 
-        def on_additional_socket_received(self, data: bytes) -> None:
+        def on_additional_socket_received(self, event: Event) -> None:
             """Custom logic for handling additional data from the process."""
-            try:
-                # Try to deserialize the event object from the child
-                event = pickle.loads(data)
-                if not isinstance(event, Event):
-                    self.__logger.error(
-                        f"Received non-Event payload '{type(event).__name__}' "
-                        f"from child process {self.__process_event_args['name']}; "
-                        f"PID={self.__process_event_args['pid']}",
-                    )
-                    return
 
-                # Emit the event if no issues occurred
-                self.__context.emit_event_sync(event)
-
-            except Exception:
-                self.__logger.error(
-                    "Failed to deserialize event from child process "
-                    f"{self.__process_event_args['name']}; "
-                    f"PID={self.__process_event_args['pid']}",
-                    exc_info=True,
-                )
+            # Emit the event if no issues occurred
+            self.__context.emit_event_sync(event)
 
         async def __cleanup_watch_task(self) -> None:
             """Waits for the watch task to exit cleanly."""
@@ -111,47 +94,44 @@ class ExecutePipedProcess(ExecuteProcess):
             Watches the additional process socket and passes data to
             `on_additional_socket_received` if anything is sent.
             """
-            buffer = b""
-            expected_length = None
-
             # Read data until StreamReader is closed
             while not self.__reader.at_eof():
                 chunk = await self.__reader.read(1024)
                 if not chunk:
                     break
 
-                while True:
-                    # Attempt to extract payload length
-                    if expected_length is None:
-                        # Not enough data for package length
-                        if len(buffer) < 4:
-                            break
+                # Try to read the chunk, handle errors
+                try:
+                    events = self.__event_stream.read(chunk)
 
-                        # Unpack package length, error if malformed
-                        try:
-                            expected_length = struct.unpack(">I", buffer[:4])[0]
-                            buffer = buffer[4:]
-                        except struct.error:
-                            self.__logger.error(
-                                "Invalid payload length in piped process.",
-                                exc_info=True,
-                            )
-                            await self.__context.emit_event(
-                                ShutdownProcess(
-                                    process_matcher=matches_action(self.__action)
-                                )
-                            )
-                            return
+                    for event in events:
+                        self.on_additional_socket_received(event)
 
-                    # Not enough data for payload
-                    if len(buffer) < expected_length:
-                        break
+                # Malformed header is fatal, terminate process
+                except struct.error:
+                    self.__logger.error(
+                        "Invalid payload length in piped process.",
+                        exc_info=True,
+                    )
+                    await self.__context.emit_event(
+                        ShutdownProcess(process_matcher=matches_action(self.__action))
+                    )
+                    return
 
-                    # Unpack payload
-                    payload = buffer[:expected_length]
-                    buffer = buffer[expected_length:]
-                    expected_length = None
-                    self.on_additional_socket_received(payload)
+                # Log errors on invalid payloads
+                except ValueError:
+                    self.__logger.error(
+                        "Failed to deserialize event from child process "
+                        f"{self.__process_event_args['name']}; "
+                        f"PID={self.__process_event_args['pid']}",
+                        exc_info=True,
+                    )
+                except TypeError:
+                    self.__logger.error(
+                        f"Received non-Event payload "
+                        f"from child process {self.__process_event_args['name']}; "
+                        f"PID={self.__process_event_args['pid']}",
+                    )
 
         """
         Properties to bypass name mangling

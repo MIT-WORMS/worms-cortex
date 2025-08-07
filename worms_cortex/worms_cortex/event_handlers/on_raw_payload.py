@@ -19,7 +19,7 @@ class OnRawPayload(OnActionEventBase):
         | Callable[[Event, LaunchContext], SomeEntitiesType | None],
         target_payload_cls: type[RawPayload] = RawPayload,
         **kwargs,
-    ) -> None:
+    ):
         """
         Create an `OnRawPayload` event handler.
 

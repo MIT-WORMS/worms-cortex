@@ -14,7 +14,7 @@ class OnLaunchNode(OnRawPayload):
 
     def __init__(
         self, *, target_action: Callable[[Action], bool] | Action | None = None
-    ) -> None:
+    ):
         """
         Create an `OnLaunchNode` event handler.
 
