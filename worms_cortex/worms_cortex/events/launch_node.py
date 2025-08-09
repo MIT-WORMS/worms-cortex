@@ -1,9 +1,9 @@
 from launch_ros.actions import Node
 
-from .raw_payload import RawPayload
+from .process_payload import ProcessPayload
 
 
-class LaunchNode(RawPayload):
+class LaunchNode(ProcessPayload):
     """
     Client side event for a piped process to launch an additional node. Should be
     serialized with `SerializedEvent` before being transmitted.

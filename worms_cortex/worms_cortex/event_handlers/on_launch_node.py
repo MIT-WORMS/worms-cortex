@@ -3,11 +3,11 @@ from typing import Callable
 from launch import Action, LaunchContext
 from launch_ros.actions import Node
 
-from .on_raw_payload import OnRawPayload
+from .on_process_payload import OnProcessPayload
 from ..events.launch_node import LaunchNode
 
 
-class OnLaunchNode(OnRawPayload):
+class OnLaunchNode(OnProcessPayload):
     """
     Helper class for handling specifically `LaunchNode` events from a piped process.
     """

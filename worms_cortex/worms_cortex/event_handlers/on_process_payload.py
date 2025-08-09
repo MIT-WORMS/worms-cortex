@@ -5,10 +5,10 @@ from launch.event_handlers.on_action_event_base import OnActionEventBase
 from launch.some_entities_type import SomeEntitiesType
 
 from ..actions.execute_piped_process import ExecutePipedProcess
-from ..events.raw_payload import RawPayload
+from ..events.process_payload import ProcessPayload
 
 
-class OnRawPayload(OnActionEventBase):
+class OnProcessPayload(OnActionEventBase):
     """Helper class for handling raw output from a piped process via events."""
 
     def __init__(
@@ -17,22 +17,22 @@ class OnRawPayload(OnActionEventBase):
         target_action: Callable[[Action], bool] | Action | None = None,
         on_output: SomeEntitiesType
         | Callable[[Event, LaunchContext], SomeEntitiesType | None],
-        target_payload_cls: type[RawPayload] = RawPayload,
+        target_payload_cls: type[ProcessPayload] = ProcessPayload,
         **kwargs,
     ):
         """
-        Create an `OnRawPayload` event handler.
+        Create an `OnProcessPayload` event handler.
 
         Args:
             target_action: `ExecutePipedProcess` instance or callable to filter events
                 from which process/processes to handle.
             on_output: Action to be done to handle the event or callable that is
                 executed whenever an event is processed.
-            target_payload_cls: Optional `RawPayload` class type to filter on.
+            target_payload_cls: Optional `ProcessPayload` class type to filter on.
         """
-        if not issubclass(target_payload_cls, RawPayload):
+        if not issubclass(target_payload_cls, ProcessPayload):
             raise ValueError(
-                "`target_payload_cls` in `OnRawPayload` must be of type `RawPayload`"
+                "`target_payload_cls` in `OnProcessPayload` must be of type `ProcessPayload`"
             )
         super().__init__(
             action_matcher=target_action,

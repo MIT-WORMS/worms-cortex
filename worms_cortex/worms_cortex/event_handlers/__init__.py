@@ -1,5 +1,5 @@
 """Event handlers used for communicating with a piped executable."""
 
-from .on_raw_payload import OnRawPayload
+from .on_process_payload import OnProcessPayload
 
-__all__ = ["OnRawPayload"]
+__all__ = ["OnProcessPayload"]
