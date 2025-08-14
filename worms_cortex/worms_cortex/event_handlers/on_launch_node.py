@@ -1,10 +1,12 @@
 from typing import Callable
 
 from launch import Action, LaunchContext
+from launch.events.process import ProcessStarted
+from launch.event_handlers import OnProcessStart
 from launch_ros.actions import Node
 
 from .on_process_payload import OnProcessPayload
-from ..events.launch_node import LaunchNode
+from ..events import LaunchNode, AckNode
 
 
 class OnLaunchNode(OnProcessPayload):
@@ -24,9 +26,29 @@ class OnLaunchNode(OnProcessPayload):
         """
         super().__init__(
             target_action=target_action,
-            on_output=self._on_launch_node_event,  # type: ignore[arg-type]
+            on_output=self._on_launch_node_event,  # type: ignore [narrowing type to target action]
             target_payload_cls=LaunchNode,
         )
 
     def _on_launch_node_event(self, event: LaunchNode, context: LaunchContext) -> Node:
-        return event.node
+        node_action = event.node
+
+        # Make a one-time event handler to acknowledge the node launching
+        ack_node_launch = OnProcessStart(
+            target_action=node_action,
+            on_start=self._on_ack_node_launch,
+            handle_once=True,
+        )
+        context.register_event_handler(ack_node_launch)
+
+        return node_action
+
+    def _on_ack_node_launch(
+        self, event: ProcessStarted, context: LaunchContext
+    ) -> None:
+        ack = AckNode(
+            node_name=event.action.node_name,  # type: ignore [targetted on a Node action]
+            pid=event.pid,
+            process_name=event.name,
+        )
+        self._return_event(ack, context)
