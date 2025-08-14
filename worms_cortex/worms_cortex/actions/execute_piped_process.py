@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, Iterable
 
 import os
 import struct
@@ -17,6 +17,7 @@ from launch.events import matches_action
 from launch.conditions import evaluate_condition_expression
 from launch.utilities import normalize_to_list_of_substitutions
 
+from ..event_handlers import OnProcessPayload
 from ..events.serialize import EventStream
 
 SOCKET_ENVIRON = "_SOCKET_FD"
@@ -33,6 +34,31 @@ class ExecutePipedProcess(ExecuteProcess):
     can be handled by registering appropriate event handlers.
     """
 
+    def __init__(
+        self, *, payload_handlers: Iterable[OnProcessPayload] | None = None, **kwargs
+    ):
+        """
+        Constructs an `ExecutePipedProcess` action. Refer to `ExecuteProcess` for
+        description of kwargs.
+
+        Args:
+            payload_handlers: An optional iterable of `OnProcessPayload` event handlers
+        """
+        self.__send_queue = None
+        self.__payload_handlers = [] if payload_handlers is None else payload_handlers
+        if payload_handlers is not None:
+            self.__send_queue = asyncio.Queue()
+            for handler in self.__payload_handlers:
+                if not isinstance(handler, OnProcessPayload):
+                    raise ValueError(
+                        f"Invalid payload_handler type of {type(handler).__name__}"
+                    )
+
+                # Store a reference to the event queue in each handler
+                handler.store_queue(self.__send_queue)
+
+        super().__init__(**kwargs)
+
     __MANGLE_PREFIX = "_ExecuteLocal"
     __BaseProtocol = getattr(ExecuteLocal, f"{__MANGLE_PREFIX}__ProcessProtocol")
 
@@ -47,14 +73,12 @@ class ExecutePipedProcess(ExecuteProcess):
             context: LaunchContext,
             process_event_args: Dict,
             reader: asyncio.StreamReader,
-            writer: asyncio.StreamWriter,
             **kwargs,
         ):
             super().__init__(action, context, process_event_args, **kwargs)
             self.__action = action
             self.__reader = reader
             self.__event_stream = EventStream()
-            self.__writer = writer
             self.__watch_task = None
 
         def connection_made(self, transport: asyncio.SubprocessTransport) -> None:
@@ -67,10 +91,6 @@ class ExecutePipedProcess(ExecuteProcess):
             if self.__watch_task:
                 self.__watch_task.cancel()
                 asyncio.create_task(self.__cleanup_watch_task())
-
-            if self.__writer:
-                self.__writer.close()
-                asyncio.create_task(self.__writer.wait_closed())
 
             super().connection_lost(exc)
 
@@ -192,7 +212,7 @@ class ExecutePipedProcess(ExecuteProcess):
             reader, writer = await asyncio.open_unix_connection(sock=server_sock)
             transport, self._subprocess_protocol = await async_execute_process(
                 lambda **kwargs: self.__PipedProcessProtocol(
-                    self, context, process_event_args, reader, writer, **kwargs
+                    self, context, process_event_args, reader, **kwargs
                 ),
                 cmd=cmd,
                 cwd=cwd,
@@ -259,6 +279,13 @@ class ExecutePipedProcess(ExecuteProcess):
         server_sock.close()
         subprocess_sock.close()
         self.__cleanup()
+
+    def execute(self, context: LaunchContext) -> None:
+        super().execute(context)
+        if not context.is_shutdown:
+            for handler in self.__payload_handlers:
+                context.register_event_handler(handler)
+        return None
 
     """
     Properties to bypass name mangling
