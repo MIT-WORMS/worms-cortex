@@ -36,7 +36,7 @@ class OnLaunchNode(OnProcessPayload):
         # Make a one-time event handler to acknowledge the node launching
         ack_node_launch = OnProcessStart(
             target_action=node_action,
-            on_start=self._on_ack_node_launch,
+            on_start=lambda e, c: self._on_ack_node_launch(e, c, event.source),
             handle_once=True,
         )
         context.register_event_handler(ack_node_launch)
@@ -44,9 +44,10 @@ class OnLaunchNode(OnProcessPayload):
         return node_action
 
     def _on_ack_node_launch(
-        self, event: ProcessStarted, context: LaunchContext
+        self, event: ProcessStarted, context: LaunchContext, source: str
     ) -> None:
         ack = AckNode(
+            source,
             node_name=event.action.node_name,  # type: ignore [targetted on a Node action]
             pid=event.pid,
             process_name=event.name,

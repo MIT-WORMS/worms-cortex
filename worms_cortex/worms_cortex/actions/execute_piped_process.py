@@ -169,6 +169,29 @@ class ExecutePipedProcess(ExecuteProcess):
         def __context(self) -> LaunchContext:
             return getattr(self, f"{self.__MANGLE_PREFIX}__context")
 
+    async def __event_writer_process(self, writer: asyncio.StreamWriter) -> None:
+        if self.__send_queue is None:
+            return
+        try:
+            while True:
+                # Get next serialized event in queue
+                raw = await self.__send_queue.get()
+                self.__send_queue.task_done()
+
+                # Log and pass invalid events
+                if not isinstance(raw, bytes):
+                    self.__logger.error("Invalid piped return type from server")
+                    continue
+
+                # Write event to child process
+                writer.write(raw)
+                await writer.drain()
+        except asyncio.CancelledError:
+            pass
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
     async def _ExecuteLocal__execute_process(self, context: LaunchContext) -> None:
         process_event_args = self.__process_event_args
         if process_event_args is None:
@@ -275,6 +298,10 @@ class ExecutePipedProcess(ExecuteProcess):
                 context.asyncio_loop.create_task(  # type: ignore
                     self._ExecuteLocal__execute_process(context)
                 )
+                if self.__send_queue is not None:
+                    context.asyncio_loop.create_task(  # type: ignore
+                        self.__event_writer_process(writer)
+                    )
                 return
         server_sock.close()
         subprocess_sock.close()
