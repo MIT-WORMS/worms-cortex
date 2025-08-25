@@ -21,6 +21,6 @@ setup(
     license="Apache-2.0",
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": ["test = worms_cortex.test_node:main"],
+        "console_scripts": [],
     },
 )

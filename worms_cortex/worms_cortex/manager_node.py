@@ -3,7 +3,7 @@ import socket
 import threading
 from collections import defaultdict
 
-from rclpy import Node
+from rclpy.node import Node
 
 from launch_ros.actions import Node as NodeAction
 
@@ -11,7 +11,7 @@ from worms_cortex.actions import SOCKET_ENVIRON
 from worms_cortex.events import LaunchNode as LaunchNodeEvent
 from worms_cortex.events import AckNode
 from worms_cortex.events.serialize import EventStream
-from worms_cortex_interface.srv import LaunchNode as LaunchNodeSrv
+from worms_cortex.srv import LaunchNode as LaunchNodeSrv
 
 
 class ManagerNodeMixin:
@@ -30,14 +30,15 @@ class ManagerNodeMixin:
                 "so Node needs to be in the inheritance tree."
             )
         self._logger = self.get_logger()
+        self._name = self.get_name()
 
         # Try to retrieve the communications socket
         fd = os.environ.get(SOCKET_ENVIRON, None)
         # TODO (trevor): Reword if we add support for ros2 run
         if fd is None:
             raise RuntimeError(
-                "Failed to retrieve launch service file descriptor. ManagerNodes must"
-                "be launched using `ros2 launch` with the `PipedNode` action."
+                "Failed to retrieve launch service file descriptor. ManagerNodes must "
+                "be launched using `ros2 launch` with the `ManagerNode` action."
             )
         if not fd.isnumeric():
             raise RuntimeError(
@@ -48,6 +49,7 @@ class ManagerNodeMixin:
         self._sock = socket.fromfd(
             int(fd), family=socket.AF_UNIX, type=socket.SOCK_STREAM
         )
+        self._sock.setblocking(True)
         os.close(int(fd))
         self._write_lock = threading.Lock()
         # Event stream to utilize socket
@@ -63,6 +65,12 @@ class ManagerNodeMixin:
 
         # Create the manager service
         self.create_service(LaunchNodeSrv, "launch_node", self._launch_node_callback)
+
+    @property
+    def child_map(self) -> dict:
+        """Returns an immutable view on the child_map dictionary."""
+        with self._child_map_lock:
+            return {k: tuple(v) for k, v in self._child_map.items()}
 
     def _reader_loop(self) -> None:
         """Simple socket reader loop to log node acks in parallel."""
@@ -91,6 +99,12 @@ class ManagerNodeMixin:
             except Exception:
                 pass
 
+    def _write_node_event(self, node_event: LaunchNodeEvent) -> None:
+        """Simple helper to send a LaunchNode event over the socket."""
+        raw = self._event_stream.write(node_event)
+        with self._write_lock:
+            self._sock.sendall(raw)
+
     def _launch_node_callback(
         self, request: LaunchNodeSrv.Request, response: LaunchNodeSrv.Response
     ) -> LaunchNodeSrv.Response:
@@ -109,15 +123,23 @@ class ManagerNodeMixin:
         )
 
         # Send to launch service
-        # TODO (trevor): Force service callers to include their node name for source
-        node_event = LaunchNodeEvent(node_action, source="temp")
-        raw = self._event_stream.write(node_event)
-        with self._write_lock:
-            self._sock.sendall(raw)
+        node_event = LaunchNodeEvent(node_action, source=request.source)
+        self._write_node_event(node_event)
 
         # NOTE (trevor): Currently no support for gracefully handling a failed launch,
         #   will always return true (or crash)
         return response
+
+    def spawn_node(self, action: NodeAction) -> None:
+        """
+        Spawn a node with this manager node as the dedicated parent.
+
+        Args:
+            action: The launch_ros action to create the desired node.
+        """
+        # TODO (trevor): Pull the name of this node to use as source
+        node_event = LaunchNodeEvent(action, source=self._name)
+        self._write_node_event(node_event)
 
 
 class ManagerNode(ManagerNodeMixin, Node):

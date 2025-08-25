@@ -6,7 +6,6 @@ from launch import Action, Event, LaunchContext
 from launch.event_handlers.on_action_event_base import OnActionEventBase
 from launch.some_entities_type import SomeEntitiesType
 
-from ..actions.execute_piped_process import ExecutePipedProcess
 from ..events.process_payload import ProcessPayload
 from ..events.serialize import EventStream
 
@@ -33,6 +32,8 @@ class OnProcessPayload(OnActionEventBase):
                 executed whenever an event is processed.
             target_payload_cls: Optional `ProcessPayload` class type to filter on.
         """
+        from ..actions.execute_piped_process import ExecutePipedProcess
+
         if not issubclass(target_payload_cls, ProcessPayload):
             raise ValueError(
                 "`target_payload_cls` in `OnProcessPayload` must be of type `ProcessPayload`"
@@ -57,7 +58,7 @@ class OnProcessPayload(OnActionEventBase):
         """
         self._queue = queue
 
-    def _return_event(self, event: Event, context: LaunchContext) -> None:
+    def return_event(self, event: Event, context: LaunchContext) -> None:
         """
         Return an event to the child process if this handler was initialized on launch.
         This method will error if the handler was not passed to `ExecutePipedProcess`.

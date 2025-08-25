@@ -1,5 +1,8 @@
 # Basic service to launch a node through a manager.
 
+# Fully resolved name of the requesting node, should be set by constructing from
+# worms_cortex.srv.LaunchNode rather than directly importing from the interface.
+string source
 # Arguments passed directly to `launch_ros.actions.Node`
 string package
 string executable

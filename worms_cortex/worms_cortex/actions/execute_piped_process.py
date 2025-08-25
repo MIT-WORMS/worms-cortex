@@ -18,6 +18,7 @@ from launch.conditions import evaluate_condition_expression
 from launch.utilities import normalize_to_list_of_substitutions
 
 from ..event_handlers import OnProcessPayload
+from ..events.process_payload import ProcessPayload
 from ..events.serialize import EventStream
 
 SOCKET_ENVIRON = "_SOCKET_FD"
@@ -96,6 +97,10 @@ class ExecutePipedProcess(ExecuteProcess):
 
         def on_additional_socket_received(self, event: Event) -> None:
             """Custom logic for handling additional data from the process."""
+
+            # Add process event args if custom payload type
+            if isinstance(event, ProcessPayload):
+                event.populate_process_args(**self.__process_event_args)
 
             # Emit the event if no issues occurred
             self.__context.emit_event_sync(event)
@@ -244,6 +249,12 @@ class ExecutePipedProcess(ExecuteProcess):
                 emulate_tty=emulate_tty,
                 stderr_to_stdout=False,
             )
+            # Start the additional event writer task if extra payload handlers
+            self._writer_task = None
+            if self.__send_queue is not None:
+                self._writer_task = context.asyncio_loop.create_task(  # type: ignore
+                    self.__event_writer_process(writer)
+                )
         except Exception:
             self.__logger.error(
                 "exception occurred while executing process:\n{}".format(
@@ -298,10 +309,6 @@ class ExecutePipedProcess(ExecuteProcess):
                 context.asyncio_loop.create_task(  # type: ignore
                     self._ExecuteLocal__execute_process(context)
                 )
-                if self.__send_queue is not None:
-                    context.asyncio_loop.create_task(  # type: ignore
-                        self.__event_writer_process(writer)
-                    )
                 return
         server_sock.close()
         subprocess_sock.close()
@@ -319,6 +326,9 @@ class ExecutePipedProcess(ExecuteProcess):
     """
 
     def __cleanup(self) -> None:
+        if self._writer_task is not None:
+            self._writer_task.cancel()
+            self._writer_task = None
         getattr(self, f"{self.__MANGLE_PREFIX}__cleanup")()
 
     @property

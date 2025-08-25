@@ -52,4 +52,4 @@ class OnLaunchNode(OnProcessPayload):
             pid=event.pid,
             process_name=event.name,
         )
-        self._return_event(ack, context)
+        self.return_event(ack, context)
