@@ -67,7 +67,7 @@ class ManagerNodeMixin:
         self.create_service(LaunchNodeSrv, "launch_node", self._launch_node_callback)
 
     @property
-    def child_map(self) -> dict:
+    def child_map(self) -> dict[str, tuple[AckNode]]:
         """Returns an immutable view on the child_map dictionary."""
         with self._child_map_lock:
             return {k: tuple(v) for k, v in self._child_map.items()}
