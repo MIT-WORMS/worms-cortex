@@ -5,7 +5,10 @@ from collections import defaultdict
 
 from rclpy.node import Node
 
+from launch import Event
+from launch.events.process import ShutdownProcess
 from launch_ros.actions import Node as NodeAction
+from launch_ros.events.matchers import matches_node_name
 
 from worms_cortex.actions import SOCKET_ENVIRON
 from worms_cortex.events import LaunchNode as LaunchNodeEvent
@@ -99,9 +102,9 @@ class ManagerNodeMixin:
             except Exception:
                 pass
 
-    def _write_node_event(self, node_event: LaunchNodeEvent) -> None:
-        """Simple helper to send a LaunchNode event over the socket."""
-        raw = self._event_stream.write(node_event)
+    def _write_event(self, event: Event) -> None:
+        """Simple helper to send an event over the socket."""
+        raw = self._event_stream.write(event)
         with self._write_lock:
             self._sock.sendall(raw)
 
@@ -124,7 +127,7 @@ class ManagerNodeMixin:
 
         # Send to launch service
         node_event = LaunchNodeEvent(node_action, source=request.source)
-        self._write_node_event(node_event)
+        self._write_event(node_event)
 
         # NOTE (trevor): Currently no support for gracefully handling a failed launch,
         #   will always return true (or crash)
@@ -137,9 +140,55 @@ class ManagerNodeMixin:
         Args:
             action: The launch_ros action to create the desired node.
         """
-        # TODO (trevor): Pull the name of this node to use as source
         node_event = LaunchNodeEvent(action, source=self._name)
-        self._write_node_event(node_event)
+        self._write_event(node_event)
+
+    def kill_node(self, target: str) -> bool:
+        """
+        Kill a node and all of its dependents. Returns a success flag and logs a
+        warning if the node does not exist.
+
+        Args:
+            target: The name of the ROS2 node to terminate.
+        """
+        child_map = self.child_map
+        if target not in child_map.keys():
+            self._logger.warn(
+                f"Unrecognized node ({target}) targetted for termination in ManagerNode"
+            )
+            return False
+
+        # Kill target node and dependents
+        self._kill_node_and_dependents(target, child_map)
+
+        return True
+
+    def _kill_node_and_dependents(
+        self, target: str, child_map: dict[str, tuple[AckNode]]
+    ):
+        """
+        Simple helper to iteratively terminate dependent nodes.
+        Returns a list of all terminated nodes.
+        """
+
+        # Iterate and terminate dependent nodes first
+        for child in child_map.get(target, []):
+            self._kill_node_and_dependents(child.node_name, child_map)
+
+        # Dependents are terminated, kill this targetted node
+        kill_event = ShutdownProcess(process_matcher=matches_node_name(target))
+        self._write_event(kill_event)
+
+        with self._child_map_lock:
+            # Remove the target from the map
+            self._child_map.pop(target, None)
+
+            # Remove target from its parent list if needed
+            for children in self._child_map.values():
+                for node_ack in children:
+                    if node_ack.node_name == target:
+                        children.remove(node_ack)
+                        return
 
 
 class ManagerNode(ManagerNodeMixin, Node):
