@@ -1,10 +1,7 @@
-from typing import TYPE_CHECKING
-
 from worms_cortex_interface.srv import LaunchNode_Request as _BaseLaunchNode_Request
 from worms_cortex_interface.srv import LaunchNode as _BaseLaunchNode
 
-if TYPE_CHECKING:
-    from rclpy.node import Node
+from rclpy.node import Node
 
 
 class LaunchNode_Request(_BaseLaunchNode_Request):
