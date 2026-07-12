@@ -75,6 +75,11 @@ class ManagerNodeMixin:
         with self._child_map_lock:
             return {k: tuple(v) for k, v in self._child_map.items()}
 
+    def is_child(self, node_name: str) -> bool:
+        """Returns true if the passed node name is a child of this node."""
+        with self._child_map_lock:
+            return node_name in self._child_map
+
     def _reader_loop(self) -> None:
         """Simple socket reader loop to log node acks in parallel."""
         try:

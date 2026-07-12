@@ -8,6 +8,7 @@ from foros_msgs.msg import RaftState
 from foros_msgs.srv import InitRaft
 
 from worms_cortex.manager_node import ManagerNode
+from worms_cortex.srv import LaunchNode
 
 
 class BrainNode(ManagerNode):
@@ -16,8 +17,8 @@ class BrainNode(ManagerNode):
     other brains and launching child nodes when needed.
     """
 
-    # Regex to capture the node ID from the InitRaft service
-    _INIT_SVC_RE = re.compile(r".+/init_node_(\d+)$")
+    # Regex to capture the node ID and name from the InitRaft service
+    _INIT_SVC_RE = re.compile(r"^/([^/]+)/.+/init_node_(\d+)$")
 
     # Lookup dictionary for mapping RaftState enum to a string
     _RAFT_STATE_NAMES = {
@@ -45,8 +46,10 @@ class BrainNode(ManagerNode):
             raise RuntimeError("node_id is required")
 
         self._membership_svc_name = f"/{self._cluster_name}/request_membership"
+        self._namespace = self.get_system_namespace(self.get_namespace())
         self._raft_state = RaftState.STANDBY
-        self._peer_ids: list[int] = []
+        self._leader_id = RaftState.UNKNOWN_LEADER
+        self._peer_ids: dict[int, str] = {}  # {id: namespace}
 
         # Our current raft state
         self.create_subscription(
@@ -72,21 +75,55 @@ class BrainNode(ManagerNode):
             self._on_discovery_timer,
         )
 
+    @property
+    def leader_namespace(self) -> str:
+        """Returns the system namespace of the current leader."""
+        return (
+            self._peer_ids.get(self._leader_id, "")
+            if self._leader_id != self._node_id
+            else self._namespace
+        )
+
+    def get_system_namespace(self, resolved_name: str) -> str:
+        """Returns the leading namespace of the passed node."""
+        return resolved_name.strip("/").split("/")[0]
+
+    def is_brain_node(self, resolved_name: str) -> bool:
+        """Returns True if the passed node is another brain node."""
+        return resolved_name.strip("/").split("/")[-1] == "brain"
+
+    def is_current_leader(self, resolved_name: str) -> bool:
+        """Returns True if the passed node is currently the leader."""
+        return (
+            self.is_brain_node(resolved_name)
+            and self.get_system_namespace(resolved_name) == self.leader_namespace
+        )
+
     def _on_raft_state(self, msg: RaftState) -> None:
         """
         Callback function for `raft_interface/state`. Updates the internal state
         and triggers any state callbacks.
         """
-        prev, self._raft_state = self._raft_state, msg.state
+        prev_state, self._raft_state = self._raft_state, msg.state
+        prev_leader, self._leader_id = self._leader_id, msg.leader_id
 
-        # State didnt change
-        if prev == self._raft_state:
+        state_changed = prev_state != self._raft_state
+        leader_changed = prev_leader != self._leader_id
+
+        # No change between messages
+        if not state_changed and not leader_changed:
             return
 
-        # Debug to track state changes
-        self.get_logger().debug(
-            f"State change: {self._RAFT_STATE_NAMES[prev]} -> {self._RAFT_STATE_NAMES[self._raft_state]}"
-        )
+        # Debug to track changes
+        if state_changed:
+            self.get_logger().debug(
+                f"State change: {self._RAFT_STATE_NAMES[prev_state]} "
+                f"-> {self._RAFT_STATE_NAMES[self._raft_state]}"
+            )
+        if leader_changed:
+            self.get_logger().debug(
+                f"Leader change: {prev_leader} -> {self._leader_id}"
+            )
 
         # TODO: Insert raft state machine callbacks here (on_leader)
 
@@ -108,7 +145,7 @@ class BrainNode(ManagerNode):
         # Retry discovery
         if not peer_ids:
             self.get_logger().warn("No peers found. Retrying discovery...")
-            self._peer_ids = []
+            self._peer_ids = {}
             self._discovery_timer = self.create_timer(
                 self._discovery_sec,
                 self._on_discovery_timer,
@@ -116,7 +153,7 @@ class BrainNode(ManagerNode):
             return
 
         # Require node discovery to settle (two sequential discoveries)
-        if set(self._peer_ids) != set(peer_ids):
+        if set(self._peer_ids.keys()) != set(peer_ids.keys()):
             self._peer_ids = peer_ids
             self._discovery_timer = self.create_timer(
                 self._discovery_sec,
@@ -125,7 +162,7 @@ class BrainNode(ManagerNode):
             return
 
         # Form a new cluster
-        all_ids = sorted({self._node_id} | set(self._peer_ids))
+        all_ids = sorted({self._node_id} | set(self._peer_ids.keys()))
         self.get_logger().info(f"Forming new cluster with members: {all_ids}")
         self._call_init_raft(all_ids)
 
@@ -159,22 +196,26 @@ class BrainNode(ManagerNode):
         if result is None or not result.success:
             self.get_logger().error("InitRaft request failed.")
 
-    def _find_peer_ids(self) -> list[int]:
+    def _find_peer_ids(self) -> dict[int, str]:
         """
         Discover peers within the ROS network.
 
         Returns:
-            peers ([int]): Raft node IDs for each peer in the system
+            peers ({int: str}): Raft node IDs for each peer in the system
         """
-        peers = []
+        peers = {}
         for svc_name, _ in self.get_service_names_and_types():
             match = self._INIT_SVC_RE.match(svc_name)
+            if not match:
+                continue
 
-            # Append peer if matched
-            if match:
-                peer_id = int(match.group(1))
-                if peer_id != self._node_id:
-                    peers.append(peer_id)
+            namespace = match.group(1)
+            peer_id = int(match.group(2))
+
+            if peer_id == self._node_id:
+                continue
+
+            peers[peer_id] = namespace
 
         return peers
 
@@ -196,6 +237,36 @@ class BrainNode(ManagerNode):
                 node_name, node_namespace
             )
         )
+
+    def _launch_node_callback(
+        self, request: LaunchNode.Request, response: LaunchNode.Response
+    ) -> LaunchNode.Response:
+        """Subclassed callback to respect raft leadership."""
+        is_leader = self.is_current_leader(self.get_fully_qualified_name())
+
+        if is_leader:
+            # Leader only accepts requests from its children
+            if self.is_child(request.source):
+                return super()._launch_node_callback(request, response)
+            else:
+                self.get_logger().error(
+                    f"Node launch request from {request.source} denied, request to a "
+                    "leader must come from child nodes"
+                )
+                response.success = False
+                return response
+
+        else:
+            # Non-leaders can accept requests from the current leader
+            if self.is_current_leader(request.source):
+                return super()._launch_node_callback(request, response)
+            else:
+                self.get_logger().error(
+                    f"Node launch request from {request.source} denied, request to a "
+                    f"non-leader must come from the leader ({self.leader_namespace})"
+                )
+                response.success = False
+                return response
 
 
 def main(args=None):
