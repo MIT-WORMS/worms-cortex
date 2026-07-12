@@ -73,6 +73,10 @@ class BrainNode(ManagerNode):
         )
 
     def _on_raft_state(self, msg: RaftState) -> None:
+        """
+        Callback function for `raft_interface/state`. Updates the internal state
+        and triggers any state callbacks.
+        """
         prev, self._raft_state = self._raft_state, msg.state
 
         # State didnt change
@@ -87,6 +91,10 @@ class BrainNode(ManagerNode):
         # TODO: Insert raft state machine callbacks here (on_leader)
 
     def _on_discovery_timer(self) -> None:
+        """
+        Callback for delayed peer discovery. Starts or joins the raft cluster based
+        on peer status.
+        """
         self._discovery_timer.cancel()
 
         # Existing cluster
@@ -122,6 +130,13 @@ class BrainNode(ManagerNode):
         self._call_init_raft(all_ids)
 
     def _call_init_raft(self, member_ids: list[int]) -> None:
+        """
+        Send the raft initialization service with the passed members.
+
+        Args:
+            member_ids ([int]): The node IDs of the cluster to initialize, if empty
+                the node will attempt to join the existing cluster.
+        """
         if not self._init_client.wait_for_service(timeout_sec=5.0):
             self.get_logger().error("InitRaft service not available.")
             return
@@ -134,11 +149,23 @@ class BrainNode(ManagerNode):
         future.add_done_callback(lambda f: self._on_init_done(f))
 
     def _on_init_done(self, future: Future) -> None:
+        """
+        Delayed callback for the raft initialization response.
+
+        Args:
+            future (Future): Async future returning the InitRaft response
+        """
         result: InitRaft.Response = future.result()
         if result is None or not result.success:
             self.get_logger().error("InitRaft request failed.")
 
     def _find_peer_ids(self) -> list[int]:
+        """
+        Discover peers within the ROS network.
+
+        Returns:
+            peers ([int]): Raft node IDs for each peer in the system
+        """
         peers = []
         for svc_name, _ in self.get_service_names_and_types():
             match = self._INIT_SVC_RE.match(svc_name)
@@ -152,6 +179,15 @@ class BrainNode(ManagerNode):
         return peers
 
     def _server_exists(self, sv_name: str) -> bool:
+        """
+        Checks if a server has been initialized for a given service.
+
+        Args:
+            sv_name (str): The full name of the service
+
+        Returns:
+            exists (bool): True if the server exists, else False
+        """
         # NOTE: This checks just servers, excluding clients
         return any(
             server_name == sv_name
