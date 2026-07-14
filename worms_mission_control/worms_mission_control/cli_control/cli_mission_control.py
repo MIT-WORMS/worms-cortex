@@ -1,4 +1,6 @@
 import threading
+import select
+import sys
 
 import rclpy
 
@@ -15,6 +17,28 @@ class CLIMissionControlNode(MissionControlNode):
         self._cli_thread = threading.Thread(target=self._cli_loop, daemon=True)
         self._cli_thread.start()
 
+    def _interruptible_input(self, prompt: str = "") -> str | None:
+        """Helper to collect and return input without permanently blocking."""
+
+        print(prompt, end="", flush=True)
+
+        try:
+            while rclpy.ok():
+                ready, _, _ = select.select([sys.stdin], [], [], 0.1)
+                if ready:
+                    line = sys.stdin.readline()
+
+                    # EOF
+                    if line == "":
+                        return None
+
+                    return line.rstrip("\n")
+
+        except KeyboardInterrupt:
+            rclpy.try_shutdown()
+
+        return None
+
     def _cli_loop(self) -> None:
         """CLI loop to prompt for new mission control commands."""
         keys = list(self.registry.keys())
@@ -22,9 +46,16 @@ class CLIMissionControlNode(MissionControlNode):
         while rclpy.ok():
             # Menu and input
             self._print_menu(keys)
-            choice = input("    > ").strip().lower()
+            choice = self._interruptible_input("    > ")
+
+            if choice is None:
+                rclpy.try_shutdown()
+                break
+
+            choice = choice.strip().lower()
 
             if choice in ("q", "quit", "exit"):
+                rclpy.try_shutdown()
                 break
 
             # Verify the input
@@ -87,7 +118,7 @@ class CLIMissionControlNode(MissionControlNode):
 
             while True:
                 print(prompt)
-                raw = input("    > ").strip()
+                raw = self._interruptible_input("    > ")
 
                 # No value provided
                 if not raw:
@@ -98,6 +129,8 @@ class CLIMissionControlNode(MissionControlNode):
 
                     print("    Required — please enter a value.")
                     continue
+
+                raw = raw.strip()
 
                 # Invalid choice
                 if a.choices and raw not in a.choices:
@@ -123,7 +156,7 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":
