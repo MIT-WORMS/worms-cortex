@@ -2,13 +2,22 @@ import re
 from concurrent.futures import Future
 
 import rclpy
+from rclpy.publisher import Publisher
 from rclpy.qos import QoSProfile, DurabilityPolicy, HistoryPolicy
+from launch_ros.actions import Node as NodeAction
 
 from foros_msgs.msg import RaftState
 from foros_msgs.srv import InitRaft
 
 from worms_cortex.manager_node import ManagerNode
 from worms_cortex.srv import LaunchNode
+from worms_cortex_interface.msg import MissionCommand, SubroutineCommand
+
+_TRANSIENT_LOCAL_QOS = QoSProfile(
+    depth=1,
+    durability=DurabilityPolicy.TRANSIENT_LOCAL,
+    history=HistoryPolicy.KEEP_LAST,
+)
 
 
 class BrainNode(ManagerNode):
@@ -45,22 +54,32 @@ class BrainNode(ManagerNode):
         if self._node_id < 0:
             raise RuntimeError("node_id is required")
 
+        # Raft and discovery
         self._membership_svc_name = f"/{self._cluster_name}/request_membership"
         self._namespace = self.get_system_namespace(self.get_namespace())
         self._raft_state = RaftState.STANDBY
         self._leader_id = RaftState.UNKNOWN_LEADER
         self._peer_ids: dict[int, str] = {}  # {id: namespace}
 
+        # Child communication
+        self._child_name_format = self.get_namespace() + "/{}"
+        self._cur_subroutine_name = ""
+        self._subroutine_command_pub: Publisher | None = None
+
         # Our current raft state
         self.create_subscription(
             RaftState,
             "raft_interface/state",
             self._on_raft_state,
-            QoSProfile(
-                depth=1,
-                durability=DurabilityPolicy.TRANSIENT_LOCAL,
-                history=HistoryPolicy.KEEP_LAST,
-            ),
+            _TRANSIENT_LOCAL_QOS,
+        )
+
+        # Commands from mission control
+        self.create_subscription(
+            MissionCommand,
+            "/mission_command",
+            self._on_mission_command,
+            _TRANSIENT_LOCAL_QOS,
         )
 
         # Client for requesting raft to begin
@@ -126,6 +145,42 @@ class BrainNode(ManagerNode):
             )
 
         # TODO: Insert raft state machine callbacks here (on_leader)
+
+    def _on_mission_command(self, msg: MissionCommand) -> None:
+        # Only the leader can execute commands
+        if not self.is_current_leader(self.get_fully_qualified_name()):
+            return
+
+        child_name = self._child_name_format.format(msg.node_name)
+
+        # This node hasn't spawned yet
+        if (
+            child_name != self._cur_subroutine_name
+            or self._subroutine_command_pub is None
+        ):
+            # Kill the current subroutine if one is running
+            if self._subroutine_command_pub is not None:
+                self.kill_node(self._cur_subroutine_name)
+
+            # Spawn the node
+            node_action = NodeAction(
+                package=msg.package,
+                executable=msg.executable,
+                name=msg.node_name,
+                namespace=self.get_namespace(),
+            )
+            self.spawn_node(node_action)
+            self._cur_subroutine_name = child_name
+
+            # Create a new publisher
+            self._subroutine_command_pub = self.create_publisher(
+                SubroutineCommand,
+                f"{child_name}/subroutine_command",
+                _TRANSIENT_LOCAL_QOS,
+            )
+
+        # Forward the command to the node
+        self._subroutine_command_pub.publish(msg.cmd)
 
     def _on_discovery_timer(self) -> None:
         """
@@ -241,7 +296,7 @@ class BrainNode(ManagerNode):
     def _launch_node_callback(
         self, request: LaunchNode.Request, response: LaunchNode.Response
     ) -> LaunchNode.Response:
-        """Subclassed callback to respect raft leadership."""
+        """Extends parent to respect raft leadership and set up communication."""
         is_leader = self.is_current_leader(self.get_fully_qualified_name())
 
         if is_leader:
@@ -267,6 +322,15 @@ class BrainNode(ManagerNode):
                 )
                 response.success = False
                 return response
+
+    def spawn_node(self, action: NodeAction) -> None:
+        """Extends parent to respect raft leadership and set up communication."""
+        if self.is_current_leader(self.get_fully_qualified_name()):
+            return super().spawn_node(action)
+
+        self.get_logger().error(
+            "Spawn node request denied, this node is not the leader"
+        )
 
 
 def main(args=None):

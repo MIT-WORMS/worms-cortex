@@ -31,6 +31,8 @@ class CommandDescription:
     """ROS package containing the SubroutineNode to launch"""
     executable: str
     """ROS entry point name for the SubroutineNode"""
+    node_name: str
+    """ROS node name for the SubroutineNode"""
     description: str
     """Description of the command"""
     group: str = ""

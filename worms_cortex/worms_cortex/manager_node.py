@@ -78,7 +78,11 @@ class ManagerNodeMixin:
     def is_child(self, node_name: str) -> bool:
         """Returns true if the passed node name is a child of this node."""
         with self._child_map_lock:
-            return node_name in self._child_map
+            return any(
+                child.node_name == node_name
+                for children in self._child_map.values()
+                for child in children
+            )
 
     def _reader_loop(self) -> None:
         """Simple socket reader loop to log node acks in parallel."""
@@ -131,6 +135,7 @@ class ManagerNodeMixin:
         )
 
         # Send to launch service
+        self._logger.debug(f"Spawning node {node_action.node_executable}")
         node_event = LaunchNodeEvent(node_action, source=request.source)
         self._write_event(node_event)
 
@@ -145,6 +150,7 @@ class ManagerNodeMixin:
         Args:
             action: The launch_ros action to create the desired node.
         """
+        self._logger.debug(f"Spawning node {action.node_executable}")
         node_event = LaunchNodeEvent(action, source=self._name)
         self._write_event(node_event)
 
@@ -164,6 +170,7 @@ class ManagerNodeMixin:
             return False
 
         # Kill target node and dependents
+        self._logger.debug(f"Killing node {target}")
         self._kill_node_and_dependents(target, child_map)
 
         return True

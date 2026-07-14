@@ -2,6 +2,7 @@ import json
 from importlib.metadata import entry_points
 
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, DurabilityPolicy, HistoryPolicy
 
 from worms_mission_control.command_registry import CommandRegistry, CommandDescription
 from worms_cortex_interface.msg import MissionCommand
@@ -16,7 +17,15 @@ class MissionControlNode(Node):
 
     def __init__(self, node_name: str) -> None:
         super().__init__(node_name)
-        self._pub = self.create_publisher(MissionCommand, "/mission_command", 10)
+        self._pub = self.create_publisher(
+            MissionCommand,
+            "/mission_command",
+            QoSProfile(
+                depth=1,
+                durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                history=HistoryPolicy.KEEP_LAST,
+            ),
+        )
         self._registry = self.load_all_registries()
 
     @property
@@ -54,6 +63,7 @@ class MissionControlNode(Node):
         msg = MissionCommand()
         msg.package = cmd.package
         msg.executable = cmd.executable
+        msg.node_name = cmd.node_name
         msg.cmd.name = cmd.name
         msg.cmd.args_json = json.dumps(args)
         self._pub.publish(msg)
