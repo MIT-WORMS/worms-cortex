@@ -11,7 +11,7 @@ from foros_msgs.srv import InitRaft
 
 from worms_cortex.manager_node import ManagerNode
 from worms_cortex.srv import LaunchNode
-from worms_cortex_interface.msg import MissionCommand, SubroutineCommand
+from worms_cortex_msgs.msg import MissionCommand, SubroutineCommand
 
 _TRANSIENT_LOCAL_QOS = QoSProfile(
     depth=1,

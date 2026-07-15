@@ -5,7 +5,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, HistoryPolicy
 
 from worms_mission_control.command_registry import CommandRegistry
-from worms_cortex_interface.msg import SubroutineCommand
+from worms_cortex_msgs.msg import SubroutineCommand
 
 
 class SubroutineNode(Node):

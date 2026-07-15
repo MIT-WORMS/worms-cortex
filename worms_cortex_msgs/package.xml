@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>worms_cortex_interface</name>
+  <name>worms_cortex_msgs</name>
   <version>0.0.0</version>
   <description>ROS message/service interface for the worms_cortex package.</description>
   <maintainer email="worms@mit.edu">worms</maintainer>

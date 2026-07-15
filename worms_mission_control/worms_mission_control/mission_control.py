@@ -4,7 +4,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, HistoryPolicy
 
 from worms_mission_control.command_registry import CommandRegistry, CommandDescription
-from worms_cortex_interface.msg import MissionCommand
+from worms_cortex_msgs.msg import MissionCommand
 
 
 class MissionControlNode(Node):
