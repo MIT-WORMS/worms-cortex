@@ -34,7 +34,7 @@ def generate_launch_description():
                     ),
                     # Brain node responsible for subroutine rollout
                     ManagerNode(
-                        package="worms_cortex",
+                        package="worms_brain",
                         executable="brain_node",
                         name="brain",
                         parameters=[
