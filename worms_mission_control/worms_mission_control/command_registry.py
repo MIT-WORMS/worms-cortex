@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from importlib.metadata import entry_points
 from collections.abc import ItemsView, KeysView
 from typing import Any, Iterator
 
@@ -116,3 +117,28 @@ class CommandRegistry:
 
     def get(self, key: str, default: Any | None = None) -> CommandDescription | None:
         return self._commands.get(key, default)
+
+    @staticmethod
+    def load_all_registries() -> "CommandRegistry":
+        """
+        Scan all installed packages for the `mission_control.subroutine_registries`
+        entry point and merge each one into a single registry.
+
+        Returns:
+            registry (CommandRegistry): The merged registry of all installed packages
+        """
+        merged = CommandRegistry()
+        for ep in entry_points(group="mission_control.subroutine_registries"):
+            pkg_registry = ep.load()
+
+            # Make sure the entry point is valid
+            if not isinstance(pkg_registry, CommandRegistry):
+                raise ValueError(
+                    f"Entry point '{ep.name}' did not resolve to a CommandRegistry "
+                    f"(got {type(pkg_registry).__name__})."
+                )
+
+            for _, cmd in pkg_registry.items():
+                merged.register(cmd)
+
+        return merged

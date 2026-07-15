@@ -1,5 +1,4 @@
 import json
-from importlib.metadata import entry_points
 
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, HistoryPolicy
@@ -26,31 +25,11 @@ class MissionControlNode(Node):
                 history=HistoryPolicy.KEEP_LAST,
             ),
         )
-        self._registry = self.load_all_registries()
+        self._registry = CommandRegistry.load_all_registries()
 
     @property
     def registry(self) -> CommandRegistry:
         return self._registry
-
-    def load_all_registries(self) -> CommandRegistry:
-        """
-        Load the command registries of installed packages.
-
-        Returns:
-            registry (CommandRegistry): The merged registry of all installed packages
-        """
-        merged = CommandRegistry()
-        for ep in entry_points(group="mission_control.subroutine_registries"):
-            pkg_registry = ep.load()
-
-            # Make sure the entry point is valid
-            if not isinstance(pkg_registry, CommandRegistry):
-                raise ValueError(f"Invalid command registry at {ep.group} = {ep.value}")
-
-            for _, cmd in pkg_registry.items():
-                merged.register(cmd)
-
-        return merged
 
     def publish_command(self, cmd: CommandDescription, args: dict) -> None:
         """
