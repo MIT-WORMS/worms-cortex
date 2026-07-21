@@ -1,5 +1,5 @@
-from worms_cortex_msgs.srv import LaunchNode_Request as _BaseLaunchNode_Request
-from worms_cortex_msgs.srv import LaunchNode as _BaseLaunchNode
+from worms_manager_msgs.srv import LaunchNode_Request as _BaseLaunchNode_Request
+from worms_manager_msgs.srv import LaunchNode as _BaseLaunchNode
 
 from rclpy.node import Node
 
@@ -24,5 +24,5 @@ class LaunchNode_Request(_BaseLaunchNode_Request):
 
 class LaunchNode(_BaseLaunchNode):
     from .launch_node import LaunchNode_Request as Request
-    from worms_cortex_msgs.srv._launch_node import LaunchNode_Response as Response
-    from worms_cortex_msgs.srv._launch_node import LaunchNode_Event as Event
+    from worms_manager_msgs.srv._launch_node import LaunchNode_Response as Response
+    from worms_manager_msgs.srv._launch_node import LaunchNode_Event as Event

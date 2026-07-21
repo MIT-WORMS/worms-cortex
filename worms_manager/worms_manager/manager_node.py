@@ -10,11 +10,11 @@ from launch.events.process import ShutdownProcess
 from launch_ros.actions import Node as NodeAction
 from launch_ros.events.matchers import matches_node_name
 
-from worms_cortex.actions import SOCKET_ENVIRON
-from worms_cortex.events import LaunchNode as LaunchNodeEvent
-from worms_cortex.events import AckNode
-from worms_cortex.events.serialize import EventStream
-from worms_cortex.srv import LaunchNode as LaunchNodeSrv
+from worms_manager.actions import SOCKET_ENVIRON
+from worms_manager.events import LaunchNode as LaunchNodeEvent
+from worms_manager.events import AckNode
+from worms_manager.events.serialize import EventStream
+from worms_manager.srv import LaunchNode as LaunchNodeSrv
 
 
 class ManagerNodeMixin:

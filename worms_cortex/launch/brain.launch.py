@@ -3,7 +3,7 @@ from launch.actions import DeclareLaunchArgument, GroupAction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, PushRosNamespace
 
-from worms_cortex.actions import ManagerNode
+from worms_manager.actions import ManagerNode
 
 
 def generate_launch_description():
@@ -34,7 +34,7 @@ def generate_launch_description():
                     ),
                     # Brain node responsible for subroutine rollout
                     ManagerNode(
-                        package="worms_brain",
+                        package="worms_cortex",
                         executable="brain_node",
                         name="brain",
                         parameters=[

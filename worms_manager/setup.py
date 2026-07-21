@@ -1,7 +1,7 @@
 from glob import glob
 from setuptools import find_packages, setup
 
-package_name = "worms_brain"
+package_name = "worms_manager"
 
 setup(
     name=package_name,
@@ -17,11 +17,10 @@ setup(
     zip_safe=True,
     maintainer="worms",
     maintainer_email="worms@mit.edu",
-    description="Coordination for a multi-agent reconfigurable robot.",
+    description="Node extensions to allow launching nodes live.",
     license="Apache-2.0",
+    tests_require=["pytest"],
     entry_points={
-        "console_scripts": [
-            "brain_node = worms_brain.brain:main",
-        ],
+        "console_scripts": [],
     },
 )

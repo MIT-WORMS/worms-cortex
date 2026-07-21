@@ -9,7 +9,7 @@ class LaunchNode(ProcessPayload):
     serialized with `SerializedEvent` before being transmitted.
     """
 
-    name = "worms_cortex.events.LaunchNode"
+    name = "worms_manager.events.LaunchNode"
 
     def __init__(self, node_action: Node, *, source: str):
         """

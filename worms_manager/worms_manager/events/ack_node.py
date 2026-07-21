@@ -4,7 +4,7 @@ from launch.event import Event
 class AckNode(Event):
     """Basic event to be emitted into a client process to acknowledge a node launch."""
 
-    name = "worms_cortex.events.AckNode"
+    name = "worms_manager.events.AckNode"
 
     def __init__(self, source: str, *, node_name: str, pid: int, process_name: str):
         """

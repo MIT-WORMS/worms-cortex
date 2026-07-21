@@ -3,13 +3,15 @@
 <package format="3">
   <name>worms_cortex</name>
   <version>0.0.0</version>
-  <description>Node extensions to allow launching nodes live.</description>
+  <description>Coordination for a multi-agent reconfigurable robot.</description>
   <maintainer email="worms@mit.edu">worms</maintainer>
   <license>Apache-2.0</license>
 
   <depend>rclpy</depend>
 
-  <depend>worms_cortex_msgs</depend>
+  <depend>worms_manager</depend>
+  <depend>worms_manager_msgs</depend>
+  <depend>foros_msgs</depend>
 
   <export>
     <build_type>ament_python</build_type>

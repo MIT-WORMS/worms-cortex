@@ -9,9 +9,9 @@ from launch_ros.actions import Node as NodeAction
 from foros_msgs.msg import RaftState
 from foros_msgs.srv import InitRaft
 
-from worms_cortex.manager_node import ManagerNode
-from worms_cortex.srv import LaunchNode
-from worms_cortex_msgs.msg import MissionCommand, SubroutineCommand
+from worms_manager.manager_node import ManagerNode
+from worms_manager.srv import LaunchNode
+from worms_manager_msgs.msg import MissionCommand, SubroutineCommand
 
 _TRANSIENT_LOCAL_QOS = QoSProfile(
     depth=1,

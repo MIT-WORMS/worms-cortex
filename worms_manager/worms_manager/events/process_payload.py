@@ -27,7 +27,7 @@ class ProcessPayload(RunningProcessEvent):
     inherited from and serialized with `SerializedEvent` before being transmitted.
     """
 
-    name = "worms_cortex.events.ProcessPayload"
+    name = "worms_manager.events.ProcessPayload"
 
     def __init__(self):
         self._action = None
