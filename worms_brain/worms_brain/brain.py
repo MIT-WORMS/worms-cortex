@@ -20,7 +20,7 @@ _TRANSIENT_LOCAL_QOS = QoSProfile(
 )
 
 
-class BrainNode(ManagerNode):
+class Brain(ManagerNode):
     """
     Primary brain of the WORMS system. A single node capable of coordinating with
     other brains and launching child nodes when needed.
@@ -335,7 +335,7 @@ class BrainNode(ManagerNode):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = BrainNode()
+    node = Brain()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

@@ -16,7 +16,7 @@ setup(
     install_requires=["setuptools"],
     zip_safe=True,
     maintainer="worms",
-    maintainer_email="trejohst@mit.edu",
+    maintainer_email="worms@mit.edu",
     description="Coordination for a multi-agent reconfigurable robot.",
     license="Apache-2.0",
     entry_points={

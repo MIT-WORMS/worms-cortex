@@ -1,5 +1,5 @@
 import json
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, HistoryPolicy
@@ -8,7 +8,7 @@ from worms_mission_control.command_registry import CommandRegistry
 from worms_cortex_msgs.msg import SubroutineCommand
 
 
-class SubroutineNode(Node):
+class SubroutineNode(Node, ABC):
     """
     Abstract base class for all subroutine nodes. The child class should register
     any compatible commands in a `CommandRegistry` within the package, and then

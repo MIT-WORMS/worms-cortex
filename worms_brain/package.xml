@@ -11,7 +11,6 @@
 
   <depend>worms_cortex</depend>
   <depend>worms_cortex_msgs</depend>
-  <depend>foros</depend>
   <depend>foros_msgs</depend>
 
   <export>
