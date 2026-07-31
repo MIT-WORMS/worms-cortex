@@ -163,8 +163,8 @@ class ManagerNodeMixin:
             target: The name of the ROS2 node to terminate.
         """
         child_map = self.child_map
-        if target not in child_map.keys():
-            self._logger.warn(
+        if target not in child_map:
+            self._logger.warning(
                 f"Unrecognized node ({target}) targetted for termination in ManagerNode"
             )
             return False

@@ -11,6 +11,7 @@
 
   <depend>worms_manager</depend>
   <depend>worms_manager_msgs</depend>
+  <depend>worms_arthron_msgs</depend>
   <depend>foros_msgs</depend>
 
   <export>

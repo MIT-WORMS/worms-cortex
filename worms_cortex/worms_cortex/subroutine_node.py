@@ -30,7 +30,9 @@ class SubroutineNode(Node, ABC):
                 ...
     """
 
-    def __init__(self, node_name: str, registry: CommandRegistry) -> None:
+    def __init__(
+        self, node_name: str, *args, registry: CommandRegistry, **kwargs
+    ) -> None:
         """
         Extended to set up communication with a parent node.
 
@@ -38,7 +40,7 @@ class SubroutineNode(Node, ABC):
             registry (CommandRegistry): A collection of valid commands
                 accepted by this node
         """
-        super().__init__(node_name)
+        super().__init__(node_name, *args, **kwargs)
         self._registry = registry
 
         self.create_subscription(

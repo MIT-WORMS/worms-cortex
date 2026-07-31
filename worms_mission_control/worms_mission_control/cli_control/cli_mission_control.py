@@ -10,12 +10,17 @@ from worms_mission_control.mission_control import MissionControlNode
 class CLIMissionControlNode(MissionControlNode):
     """Basic command line interface for sending mission control commands."""
 
+    _REFRESH = "__REFRESH__"
+
     def __init__(self) -> None:
         super().__init__("mission_control")
 
         # Run the CLI in a continuous thread to not block ROS
         self._cli_thread = threading.Thread(target=self._cli_loop, daemon=True)
         self._cli_thread.start()
+
+        # Track the prior config to know when to update the menu
+        self._prev_configuration: str | None = None
 
     def _interruptible_input(self, prompt: str = "") -> str | None:
         """Helper to collect and return input without permanently blocking."""
@@ -24,6 +29,11 @@ class CLIMissionControlNode(MissionControlNode):
 
         try:
             while rclpy.ok():
+                # Config changed before input, refresh the menu
+                if self.configuration != self._prev_configuration:
+                    self._prev_configuration = self.configuration
+                    return self._REFRESH
+
                 ready, _, _ = select.select([sys.stdin], [], [], 0.1)
                 if ready:
                     line = sys.stdin.readline()
@@ -41,12 +51,23 @@ class CLIMissionControlNode(MissionControlNode):
 
     def _cli_loop(self) -> None:
         """CLI loop to prompt for new mission control commands."""
-        keys = list(self.registry.keys())
 
         while rclpy.ok():
+            # Valid keys for this configuration
+            keys = [
+                key
+                for key, cmd in self.registry.items()
+                if not cmd.compatible_configs
+                or self.configuration in cmd.compatible_configs
+            ]
+
             # Menu and input
             self._print_menu(keys)
             choice = self._interruptible_input("    > ")
+
+            if choice == self._REFRESH:
+                print()
+                continue
 
             if choice is None:
                 rclpy.try_shutdown()

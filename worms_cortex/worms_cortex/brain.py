@@ -1,10 +1,12 @@
 import re
+from pathlib import Path
 from concurrent.futures import Future
 
 import rclpy
 from rclpy.publisher import Publisher
 from rclpy.qos import QoSProfile, DurabilityPolicy, HistoryPolicy
 from launch_ros.actions import Node as NodeAction
+from ament_index_python.packages import get_package_share_directory
 
 from foros_msgs.msg import RaftState
 from foros_msgs.srv import InitRaft
@@ -12,6 +14,8 @@ from foros_msgs.srv import InitRaft
 from worms_manager.manager_node import ManagerNode
 from worms_manager.srv import LaunchNode
 from worms_manager_msgs.msg import MissionCommand, SubroutineCommand
+
+from worms_arthron_msgs.msg import NamedConfiguration
 
 _TRANSIENT_LOCAL_QOS = QoSProfile(
     depth=1,
@@ -41,18 +45,19 @@ class Brain(ManagerNode):
         super().__init__("brain")
 
         # Parameters
-        self.declare_parameter("cluster_name", "")
-        self.declare_parameter("node_id", -1)
-        self.declare_parameter("discovery_timeout_ms", 3000)
+        self.declare_parameter("cluster_name", rclpy.Parameter.Type.STRING)
+        self.declare_parameter("node_id", rclpy.Parameter.Type.INTEGER)
+        self.declare_parameter("discovery_timeout_s", 3.0)
 
-        self._cluster_name = self.get_parameter("cluster_name").value
-        self._node_id = int(self.get_parameter("node_id").value)  # type: ignore
-        self._discovery_sec = self.get_parameter("discovery_timeout_ms").value / 1000.0  # type: ignore
-
-        if not self._cluster_name:
-            raise RuntimeError("cluster_name is required")
-        if self._node_id < 0:
-            raise RuntimeError("node_id is required")
+        self._cluster_name = (
+            self.get_parameter("cluster_name").get_parameter_value().string_value
+        )
+        self._node_id = (
+            self.get_parameter("node_id").get_parameter_value().integer_value
+        )
+        self._discovery_sec = (
+            self.get_parameter("discovery_timeout_s").get_parameter_value().double_value
+        )
 
         # Raft and discovery
         self._membership_svc_name = f"/{self._cluster_name}/request_membership"
@@ -60,11 +65,6 @@ class Brain(ManagerNode):
         self._raft_state = RaftState.STANDBY
         self._leader_id = RaftState.UNKNOWN_LEADER
         self._peer_ids: dict[int, str] = {}  # {id: namespace}
-
-        # Child communication
-        self._child_name_format = self.get_namespace() + "/{}"
-        self._cur_subroutine_name = ""
-        self._subroutine_command_pub: Publisher | None = None
 
         # Our current raft state
         self.create_subscription(
@@ -74,6 +74,17 @@ class Brain(ManagerNode):
             _TRANSIENT_LOCAL_QOS,
         )
 
+        # Client for requesting raft to begin
+        self._init_client = self.create_client(
+            InitRaft,
+            f"raft_interface/init_node_{self._node_id}",
+        )
+
+        # Child communication
+        self._child_name_format = self.get_namespace() + "/{}"
+        self._cur_subroutine_name = ""
+        self._subroutine_command_pub: Publisher | None = None
+
         # Commands from mission control
         self.create_subscription(
             MissionCommand,
@@ -82,10 +93,15 @@ class Brain(ManagerNode):
             _TRANSIENT_LOCAL_QOS,
         )
 
-        # Client for requesting raft to begin
-        self._init_client = self.create_client(
-            InitRaft,
-            f"raft_interface/init_node_{self._node_id}",
+        # System topology
+        self._cur_configuration: str | None = None
+
+        # Current configuration from topology system
+        self._config_sub = self.create_subscription(
+            NamedConfiguration,
+            "named_configuration",
+            self._on_named_configuration,
+            _TRANSIENT_LOCAL_QOS,
         )
 
         # Delayed discovery to let nodes launch
@@ -93,6 +109,8 @@ class Brain(ManagerNode):
             self._discovery_sec,
             self._on_discovery_timer,
         )
+
+    # region Node name helpers
 
     @property
     def leader_namespace(self) -> str:
@@ -118,35 +136,20 @@ class Brain(ManagerNode):
             and self.get_system_namespace(resolved_name) == self.leader_namespace
         )
 
-    def _on_raft_state(self, msg: RaftState) -> None:
-        """
-        Callback function for `raft_interface/state`. Updates the internal state
-        and triggers any state callbacks.
-        """
-        prev_state, self._raft_state = self._raft_state, msg.state
-        prev_leader, self._leader_id = self._leader_id, msg.leader_id
+    # endregion
 
-        state_changed = prev_state != self._raft_state
-        leader_changed = prev_leader != self._leader_id
+    # region Configuration
 
-        # No change between messages
-        if not state_changed and not leader_changed:
-            return
+    def _on_named_configuration(self, msg: NamedConfiguration) -> None:
+        """Callback to handle a new named configuration from the topology."""
+        self._cur_configuration = msg.config_name if msg.known_config else None
 
-        # Debug to track changes
-        if state_changed:
-            self.get_logger().debug(
-                f"State change: {self._RAFT_STATE_NAMES[prev_state]} "
-                f"-> {self._RAFT_STATE_NAMES[self._raft_state]}"
-            )
-        if leader_changed:
-            self.get_logger().debug(
-                f"Leader change: {prev_leader} -> {self._leader_id}"
-            )
+    # endregion
 
-        # TODO: Insert raft state machine callbacks here (on_leader)
+    # region Mission control
 
     def _on_mission_command(self, msg: MissionCommand) -> None:
+        """Callback to handle new command from mission control."""
         # Only the leader can execute commands
         if not self.is_current_leader(self.get_fully_qualified_name()):
             return
@@ -163,11 +166,13 @@ class Brain(ManagerNode):
                 self.kill_node(self._cur_subroutine_name)
 
             # Spawn the node
+            config = self._get_subroutine_config(msg.package, msg.executable)
             node_action = NodeAction(
                 package=msg.package,
                 executable=msg.executable,
                 name=msg.node_name,
                 namespace=self.get_namespace(),
+                parameters=[config] if config else None,
             )
             self.spawn_node(node_action)
             self._cur_subroutine_name = child_name
@@ -181,6 +186,37 @@ class Brain(ManagerNode):
 
         # Forward the command to the node
         self._subroutine_command_pub.publish(msg.cmd)
+
+    def _get_subroutine_config(self, package: str, executable: str) -> str | None:
+        """
+        Attempt to get the config yaml for a given subroutine. Searches the package's
+        `config` directory expecting to find an `<executable>.yaml` located in either
+        the `subroutines` or `<system_configuration>` folders.
+
+        Args:
+            package (str): The ros package the subroutine belongs to
+            executable (str): The specific executable to search for
+
+        Returns:
+            config_path (str | None): The config path if it was found
+        """
+        config_dir = Path(get_package_share_directory(package)) / "config"
+
+        # Default to subroutines path, take specific config if it exists
+        best_path = config_dir / "subroutines" / f"{executable}.yaml"
+        if self._cur_configuration:
+            file_path = config_dir / self._cur_configuration / f"{executable}.yaml"
+            best_path = file_path if file_path.exists() else best_path
+
+        if not best_path.exists():
+            self.get_logger().debug(f"Found no config for {executable}")
+            return None
+
+        return str(best_path)
+
+    # endregion
+
+    # region Raft management
 
     def _on_discovery_timer(self) -> None:
         """
@@ -220,36 +256,6 @@ class Brain(ManagerNode):
         all_ids = sorted({self._node_id} | set(self._peer_ids.keys()))
         self.get_logger().info(f"Forming new cluster with members: {all_ids}")
         self._call_init_raft(all_ids)
-
-    def _call_init_raft(self, member_ids: list[int]) -> None:
-        """
-        Send the raft initialization service with the passed members.
-
-        Args:
-            member_ids ([int]): The node IDs of the cluster to initialize, if empty
-                the node will attempt to join the existing cluster.
-        """
-        if not self._init_client.wait_for_service(timeout_sec=5.0):
-            self.get_logger().error("InitRaft service not available.")
-            return
-
-        req = InitRaft.Request()
-        req.member_ids = [int(i) for i in member_ids]
-
-        # Send the call async so we know if it was successful
-        future = self._init_client.call_async(req)
-        future.add_done_callback(lambda f: self._on_init_done(f))
-
-    def _on_init_done(self, future: Future) -> None:
-        """
-        Delayed callback for the raft initialization response.
-
-        Args:
-            future (Future): Async future returning the InitRaft response
-        """
-        result: InitRaft.Response = future.result()
-        if result is None or not result.success:
-            self.get_logger().error("InitRaft request failed.")
 
     def _find_peer_ids(self) -> dict[int, str]:
         """
@@ -293,6 +299,68 @@ class Brain(ManagerNode):
             )
         )
 
+    def _call_init_raft(self, member_ids: list[int]) -> None:
+        """
+        Send the raft initialization service with the passed members.
+
+        Args:
+            member_ids ([int]): The node IDs of the cluster to initialize, if empty
+                the node will attempt to join the existing cluster.
+        """
+        if not self._init_client.wait_for_service(timeout_sec=5.0):
+            self.get_logger().error("InitRaft service not available.")
+            return
+
+        req = InitRaft.Request()
+        req.member_ids = [int(i) for i in member_ids]
+
+        # Send the call async so we know if it was successful
+        future = self._init_client.call_async(req)
+        future.add_done_callback(lambda f: self._on_init_done(f))
+
+    def _on_init_done(self, future: Future) -> None:
+        """
+        Delayed callback for the raft initialization response.
+
+        Args:
+            future (Future): Async future returning the InitRaft response
+        """
+        result: InitRaft.Response = future.result()
+        if result is None or not result.success:
+            self.get_logger().error("InitRaft request failed.")
+
+    def _on_raft_state(self, msg: RaftState) -> None:
+        """
+        Callback function for `raft_interface/state`. Updates the internal state
+        and triggers any state callbacks.
+        """
+        prev_state, self._raft_state = self._raft_state, msg.state
+        prev_leader, self._leader_id = self._leader_id, msg.leader_id
+
+        state_changed = prev_state != self._raft_state
+        leader_changed = prev_leader != self._leader_id
+
+        # No change between messages
+        if not state_changed and not leader_changed:
+            return
+
+        # Debug to track changes
+        if state_changed:
+            self.get_logger().debug(
+                f"State change: {self._RAFT_STATE_NAMES[prev_state]} "
+                f"-> {self._RAFT_STATE_NAMES[self._raft_state]}"
+            )
+        if leader_changed:
+            self.get_logger().debug(
+                f"Leader change: {prev_leader} -> {self._leader_id}"
+            )
+
+        # TODO: Insert raft state machine callbacks here (on_leader)
+
+    # endregion
+
+    # region Overloads
+
     def _launch_node_callback(
         self, request: LaunchNode.Request, response: LaunchNode.Response
     ) -> LaunchNode.Response:
@@ -332,6 +400,8 @@ class Brain(ManagerNode):
             "Spawn node request denied, this node is not the leader"
         )
 
+    # endregion
+
 
 def main(args=None):
     rclpy.init(args=args)
@@ -342,8 +412,7 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

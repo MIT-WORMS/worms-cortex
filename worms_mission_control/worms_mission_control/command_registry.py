@@ -34,6 +34,8 @@ class CommandDescription:
     """ROS entry point name for the SubroutineNode"""
     node_name: str
     """ROS node name for the SubroutineNode"""
+    compatible_configs: list[str]
+    """Robot configurations compatible with this command, empty indicates universal."""
     description: str
     """Description of the command"""
     group: str = ""
@@ -55,6 +57,8 @@ class CommandRegistry:
                 name="walk",
                 package="walking_pkg",
                 executable="walking_node",
+                node_name="walking_node",
+                compatible_configs=["quadruped", "hexapod"],
                 description="Walk forward a fixed distance",
                 group="mobility",
                 args=[
