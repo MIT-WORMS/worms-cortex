@@ -15,12 +15,12 @@ class CLIMissionControlNode(MissionControlNode):
     def __init__(self) -> None:
         super().__init__("mission_control")
 
+        # Track the prior config to know when to update the menu
+        self._prev_configuration: str | None = None
+
         # Run the CLI in a continuous thread to not block ROS
         self._cli_thread = threading.Thread(target=self._cli_loop, daemon=True)
         self._cli_thread.start()
-
-        # Track the prior config to know when to update the menu
-        self._prev_configuration: str | None = None
 
     def _interruptible_input(self, prompt: str = "") -> str | None:
         """Helper to collect and return input without permanently blocking."""
